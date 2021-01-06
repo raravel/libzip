@@ -1,7 +1,7 @@
 {
-	"name": "typescript-template",
+	"name": "zip-archive",
 	"version": "1.0.0",
-	"author": "tree-some",
+	"author": "raravel",
 	"license": "MIT",
 	"scripts": {
 		"dev": "nodemon --watch src --watch package.json --watch tsconfig.js --delay 1 --exec 'npm run lint && ts-node' src/index.ts",
