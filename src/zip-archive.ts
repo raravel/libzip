@@ -3,6 +3,7 @@ import { UINT32, UINT16, SIZE } from './data-type';
 import ZIP20 from './zip20';
 import path from 'path';
 import zlib from 'zlib';
+import CRC32 from 'crc-32';
 
 enum COMP_TYPE {
 
@@ -29,6 +30,8 @@ enum COMP_TYPE {
     PPMD_1              = 0x98, /* TODO: */
 
 }
+
+const _uint32 = n => n >>>=0;
 
 export enum CD_VER {
 
@@ -99,6 +102,20 @@ const parseFlag = (flag: UINT16) => {
     ret.StrongEnc = !!(flag & FLAG.STRONG_ENCRYPTION);
     ret.Encoding = !!(flag & FLAG.LANGUAGE_ENCODING);
     ret.MaskHeader = !!(flag & FLAG.MASK_HEADER_VALUES);
+    return ret;
+}
+
+const FlagToInt16 = (flag: Flag) => {
+    let ret = 0;
+    ret |= (flag.Encrypted ? FLAG.ENCRYPTED_FILE : 0);
+    ret |= (flag.CompressionOption1 ? FLAG.COMPRESSION_OPTION_1 : 0);
+    ret |= (flag.CompressionOption2 ? FLAG.COMPRESSION_OPTION_2 : 0);
+    ret |= (flag.Descriptor ? FLAG.DATA_DESCRIPTOR : 0);
+    ret |= (flag.EnhancedDeflation ? FLAG.ENHANCED_DEFLATION : 0);
+    ret |= (flag.PatchedData ? FLAG.COMPRESSED_PATCHED_DATA : 0);
+    ret |= (flag.StrongEnc ? FLAG.STRONG_ENCRYPTION : 0);
+    ret |= (flag.Encoding ? FLAG.LANGUAGE_ENCODING : 0);
+    ret |= (flag.MaskHeader ? FLAG.MASK_HEADER_VALUES : 0);
     return ret;
 }
 
@@ -227,7 +244,7 @@ export class CentralDirectory {
     public signature: UINT32;
     public version: UINT16;
     public extVer: UINT16;
-    public flag: Flag;
+    public flags: Flag;
     public compression: COMP_TYPE;
     public modTime: UINT16;
     public modDate: UINT16;
@@ -253,7 +270,7 @@ export class CentralDirectory {
             }
             this.version = stream.ReadUint16();
             this.extVer = stream.ReadUint16();
-            this.flag = parseFlag(stream.ReadUint16());
+            this.flags = parseFlag(stream.ReadUint16());
             this.compression = stream.ReadUint16();
             this.modTime = stream.ReadUint16();
             this.modDate = stream.ReadUint16();
@@ -275,7 +292,7 @@ export class CentralDirectory {
             this.signature = this.SIGNATURE;
             this.version = 0x14;
             this.extVer = 0x10;
-            this.flag = parseFlag(0);
+            this.flags = parseFlag(0);
             this.compression = COMP_TYPE.DEFLATED;
             this.modTime = DateToTime(date);
             this.modDate = DateToTime(date);
@@ -317,15 +334,15 @@ export class EndOfCentralDirectory {
 
     private readonly SIGNATURE: UINT32 = 0x06054B50;
 
-    public signature: UINT32;
-    public diskNum: UINT16;
-    public diskStart: UINT16;
-    public recordNum: UINT16;
-    public totalNum: UINT16;
-    public recordSize: UINT32;
-    public recordStart: UINT32;
-    public commentLen: UINT16;
-    public comment: string;
+    public signature: UINT32;       // End of central directory signature
+    public diskNum: UINT16;         // The number of this disk (containing the end of central directory record)
+    public diskStart: UINT16;       // Number of the disk on which the central directory starts
+    public recordNum: UINT16;       // Number of central directory records on this disk
+    public totalNum: UINT16;        // Total number of central directory records
+    public recordSize: UINT32;      // Size of central directory (bytes)
+    public recordStart: UINT32;     // Offset of the start of the central directory on the disk on which the central directory starts
+    public commentLen: UINT16;      // The length of the following comment field
+    public comment: string;         // Comment
 
     static isEOCD(stream: FileManager) {
         let signature = stream.ReadUint32();
@@ -381,8 +398,16 @@ export class ZipArchiveEntry {
         }
     }
 
+    get CentralDirectory() {
+        return this.central;
+    }
+
     set CentralDirectory(central: CentralDirectory) {
         this.central = central;
+    }
+
+    get LocalFileHeader() {
+        return this.header;
     }
 
     set LocalFileHeader(header: LocalFileHeader) {
@@ -469,7 +494,7 @@ export class ZipArchiveEntry {
         return data;
     }
 
-    private open() {
+    public Init() {
         this.stream.Fd = this.central.headerOffset;
         this.header = new LocalFileHeader(this.stream);
     }
@@ -485,14 +510,14 @@ export class ZipArchiveEntry {
 
     public Read() {
         if ( !this.header ) {
-            this.open();
+            this.Init();
         }
         return this.Uncompress(this.header.data);
     }
 
     public Write(data: Buffer) {
         if ( !this.header ) {
-            this.open();
+            this.Init();
         }
         this.header.data = this.Compress(data);
     }
@@ -557,8 +582,81 @@ export class ZipArchive {
         return entry;
     }
 
-    public Dispose(disposing?: boolean) {
+    public Save() {
         /* TODO: https://docs.microsoft.com/ko-kr/dotnet/api/system.io.compression.ziparchive.dispose?view=net-5.0 */
+        const stream = new FileManager();
+        stream.filename = this.stream.filename;
+        stream.Fd = 0;
+        this.entries.forEach((entry: ZipArchiveEntry) => {
+            
+            const data = entry.Read();
+            const header = entry.LocalFileHeader;
+            const central = entry.CentralDirectory;
+
+            const crc32 = _uint32(CRC32.buf(data));
+            header.crc32 = crc32;
+            central.crc32 = crc32;
+            central.headerOffset = stream.Fd;
+
+            stream.WriteUint32(header.signature);
+            stream.WriteUint16(header.version);
+            stream.WriteUint16(FlagToInt16(header.flags));
+            stream.WriteUint16(header.compression);
+            stream.WriteUint16(header.modTime);
+            stream.WriteUint16(header.modDate);
+            stream.WriteUint32(header.crc32);
+            stream.WriteUint32(header.compressedSize);
+            stream.WriteUint32(header.uncompressedSize);
+            stream.WriteUint16(header.filenameLen);
+            stream.WriteUint16(header.extraFieldLen);
+            stream.WriteString(header.filename);
+            stream.WriteBuffer(header.extraField);
+            stream.WriteBuffer(header.data);
+        });
+
+        this.entries.forEach((entry: ZipArchiveEntry, idx: number) => {
+            const central = entry.CentralDirectory;
+
+            if ( idx === 0 ) {
+                this.eofDir.recordStart = stream.Fd;
+            }
+
+            stream.WriteUint32(central.signature);
+            stream.WriteUint16(central.version);
+            stream.WriteUint16(central.extVer);
+            stream.WriteUint16(FlagToInt16(central.flags));
+            stream.WriteUint16(central.compression);
+            stream.WriteUint16(central.modTime);
+            stream.WriteUint16(central.modDate);
+            stream.WriteUint32(central.crc32);
+            stream.WriteUint32(central.compressedSize);
+            stream.WriteUint32(central.uncompressedSize);
+            stream.WriteUint16(central.filenameLen);
+            stream.WriteUint16(central.extraFieldLen);
+            stream.WriteUint16(central.commentLen);
+            stream.WriteUint16(central.diskNumStart);
+            stream.WriteUint16(central.inAttr);
+            stream.WriteUint32(central.exAttr);
+            stream.WriteUint32(central.headerOffset);
+            stream.WriteString(central.filename);
+            stream.WriteBuffer(central.extraField);
+            stream.WriteString(central.comment);
+        });
+
+        this.eofDir.totalNum = this.eofDir.totalNum - this.eofDir.recordNum + this.entries.length;
+        this.eofDir.recordNum = this.entries.length;
+
+        stream.WriteUint32(this.eofDir.signature);
+        stream.WriteUint16(this.eofDir.diskNum);
+        stream.WriteUint16(this.eofDir.diskStart);
+        stream.WriteUint16(this.eofDir.recordNum);
+        stream.WriteUint16(this.eofDir.totalNum);
+        stream.WriteUint32(this.eofDir.recordSize);
+        stream.WriteUint32(this.eofDir.recordStart);
+        stream.WriteUint16(this.eofDir.commentLen);
+        stream.WriteString(this.eofDir.comment);
+
+        stream.Save();
     }
 
 }
