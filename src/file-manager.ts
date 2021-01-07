@@ -6,20 +6,7 @@
  */
 
 import fs from 'fs';
-
-export enum SIZE {
-
-    INT8 = 1,
-    INT16 = 2,
-    INT32 = 4,
-    INT64 = 8,
-
-    UINT8 = 1,
-    UINT16 = 2,
-    UINT32 = 4,
-    UINT64 = 8,
-
-};
+import { SIZE } from './data-type';
 
 export class FileManager {
     private buf!: Buffer;
@@ -31,6 +18,18 @@ export class FileManager {
         }
 
         this.buf = fs.readFileSync(filename, options);
+    }
+
+    get Fd() {
+        return this.fd;
+    }
+
+    set Fd(fd: number) {
+        this.fd = fd;
+    }
+
+    get Length() {
+        return this.buf.length;
     }
 
     public ReadUint8() {
@@ -67,6 +66,25 @@ export class FileManager {
         let b_ = this.buf.subarray(this.fd, this.fd + len);
         ret = b_.toString();
         this.fd += len;
+        return ret;
+    }
+
+    public ReadBuffer(len: number) {
+        let ret = this.buf.subarray(this.fd, this.fd + len);
+        this.fd += len;
+        return ret;
+    }
+
+    public ReadBufferNew(len: number) {
+        let b_ = this.buf.subarray(this.fd, this.fd + len);
+        let ret = Buffer.from(b_);
+        this.fd += len;
+        return ret;
+    }
+
+    public ReadBufferEnd(fd: number = this.fd) {
+        let ret = this.buf.subarray(fd, this.buf.length);
+        this.fd = this.buf.length;
         return ret;
     }
 
