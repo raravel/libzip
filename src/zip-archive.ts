@@ -3,8 +3,6 @@ import { UINT32, UINT16, SIZE } from './data-type';
 import ZIP20 from './zip20';
 import path from 'path';
 import zlib from 'zlib';
-import crc32 from 'crc-32';
-import { Certificate } from 'crypto';
 
 enum COMP_TYPE {
 
