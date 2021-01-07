@@ -1,5 +1,6 @@
 import { FileManager } from './file-manager';
 import { UINT32, UINT16, SIZE } from './data-type';
+import path from 'path';
 
 enum COMP_TYPE {
 
@@ -99,7 +100,7 @@ export class LocalFileHeader {
         this.extraFieldLen = stream.ReadUint16();
         this.filename = stream.ReadString(this.filenameLen);
         this.extraField = stream.ReadBuffer(this.extraFieldLen);
-        this.data = stream.ReadBufferEnd();
+        this.data = stream.ReadBuffer(this.compressedSize);
     }
 
 }
@@ -194,18 +195,13 @@ export class EndOfCentralDirectory {
 
 }
 
-export class ZipEntry {
+export class ZipArchiveEntry {
 
     private central!: CentralDirectory;
     private header!: LocalFileHeader;
 
-    constructor(central?: CentralDirectory, header?: LocalFileHeader) {
-        if ( central instanceof CentralDirectory ) {
-            this.central = central;
-        }
-        if ( header instanceof LocalFileHeader ) {
-            this.header = header;
-        }
+    constructor(private archive: ZipArchive, private stream: FileManager) {
+        this.central = new CentralDirectory(stream);
     }
 
     set CentralDirectory(central: CentralDirectory) {
@@ -216,12 +212,78 @@ export class ZipEntry {
         this.header = header;
     }
 
+    get Archive() {
+        return this.archive;
+    }
+
+    get CompressedLength() {
+        return this.central.compressedSize;
+    }
+
+    get Crc32() {
+        return this.central.crc32;
+    }
+
+    get ExternalAttributes() {
+        return this.central.exAttr;
+    }
+
+    set ExternalAttributes(val: UINT32) {
+        this.central.exAttr = val;
+    }
+
+    get FullName() {
+        return this.central.filename;
+    }
+
+    get LastWriteTime() {
+        /* TODO: */
+        return new Date();
+    }
+
+    set LastWriteTime(val: Date) {
+        /* TODO: */
+    }
+
+    get Length() {
+        return this.central.uncompressedSize;
+    }
+
+    get Name() {
+        return path.basename(this.central.filename);
+    }
+
+    private Uncompress() {
+        if ( !this.header ) {
+            return;
+        }
+        let buf: Buffer;
+        switch ( this.header.compression ) {
+            case COMP_TYPE.NO_COMPRESSION:
+                buf = this.header.data;
+                break;
+            default:
+                throw Error(`Unknown compression method. [${this.header.compression}]`);
+        }
+        return buf;
+    }
+
+    public Delete() {
+        /* TODO: https://docs.microsoft.com/ko-kr/dotnet/api/system.io.compression.ziparchiveentry.delete?view=net-5.0 */
+    }
+
+    public Open() {
+        this.stream.Fd = this.central.headerOffset;
+        this.header = new LocalFileHeader(this.stream);
+        return this.Uncompress();
+    }
+
 }
 
 export class ZipArchive {
 
     private eofDir: EndOfCentralDirectory;
-    private entries: ZipEntry[] = [];
+    private entries: ZipArchiveEntry[] = [];
 
     constructor(private stream: FileManager) {
         stream.Fd = stream.Length - SIZE.UINT32;
@@ -235,11 +297,46 @@ export class ZipArchive {
         
         stream.Fd = this.eofDir.recordStart;
         for ( let i=0;i < this.eofDir.recordNum;i++ ) {
-            const central = new CentralDirectory(stream);
-            const entry = new ZipEntry(central);
+            const entry = new ZipArchiveEntry(this, stream);
 
             this.entries.push(entry);
         }
+    }
+
+    get Entries() {
+        return this.entries;
+    }
+
+    public GetEntry(entryName: string) {
+        const idx = this.entries.findIndex((entry: ZipArchiveEntry) => entry.Name === entryName);
+        if ( idx !== -1 ) {
+            return this.entries[idx];
+        }
+    }
+
+    public CreateEntry(entryName: string) {
+        /* TODO: https://docs.microsoft.com/ko-kr/dotnet/api/system.io.compression.ziparchive.createentry?view=net-5.0 */
+    }
+
+    public Dispose(disposing?: boolean) {
+        /* TODO: https://docs.microsoft.com/ko-kr/dotnet/api/system.io.compression.ziparchive.dispose?view=net-5.0 */
+    }
+
+}
+
+export class ZipFile {
+
+    static CreateFromDirectory(src: string, dst: string) {
+        /* TODO: https://docs.microsoft.com/ko-kr/dotnet/api/system.io.compression.zipfile.createfromdirectory?view=net-5.0 */
+    }
+
+    static ExtractToDirectory(src: string, dst: string) {
+        /* TODO: https://docs.microsoft.com/ko-kr/dotnet/api/system.io.compression.zipfile.extracttodirectory?view=net-5.0 */
+    }
+
+    static Open(filename: string) {
+        const fm = new FileManager(filename);
+        return new ZipArchive(fm);
     }
 
 }
