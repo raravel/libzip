@@ -3,6 +3,8 @@ import { UINT32, UINT16, SIZE } from './data-type';
 import ZIP20 from './zip20';
 import path from 'path';
 import zlib from 'zlib';
+import crc32 from 'crc-32';
+import { Certificate } from 'crypto';
 
 enum COMP_TYPE {
 
@@ -102,7 +104,52 @@ const parseFlag = (flag: UINT16) => {
     return ret;
 }
 
+const DayToDate = (day: UINT16, date: Date = new Date(0)) => {
+    const year  = (day & 0b1111100000000000);
+    const month = (day & 0b0000011111100000);
+    const d     = (day & 0b0000000000011111);
+    date.setFullYear(year);
+    date.setMonth(month - 1);
+    date.setDate(d);
+    return date;
+}
+
+const TimeToDate = (time: UINT16, date: Date = new Date(0)) => {
+    const hour   = (time & 0b1111100000000000);
+    const minute = (time & 0b0000011111100000);
+    const sec    = (time & 0b0000000000011111);
+    date.setHours(hour);
+    date.setMinutes(minute);
+    date.setSeconds(sec * 2);
+    return date;
+}
+
+const DateToDay = (date: Date) => {
+    let ret: number = 0;
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1);
+    const d = date.getDate();
+    ret |= year << 11;
+    ret |= month << 5;
+    ret |= d;
+    return ret;
+}
+
+const DateToTime = (date: Date) => {
+    let ret: number = 0;
+    const hour = date.getHours();
+    const minute = date.getMinutes();
+    const sec = Math.floor(date.getSeconds() / 2);
+    ret |= hour << 11;
+    ret |= minute << 5;
+    ret |= sec;
+    return ret;
+}
+
+
 export class LocalFileHeader {
+
+    private readonly SIGNATURE: number = 0x04034B50;
 
     public signature: UINT32;
     public version: UINT16;
@@ -119,29 +166,65 @@ export class LocalFileHeader {
     public extraField: Buffer;
     public data: Buffer;
     
-    constructor(stream: FileManager) {
-        this.signature = stream.ReadUint32();
-        if ( this.signature !== 0x04034B50 ) {
-            throw Error('Can not read LocalFileHeader');
+    constructor(stream?: FileManager) {
+        if ( stream ) {
+            this.signature = stream.ReadUint32();
+            if ( this.signature !== this.SIGNATURE ) {
+                throw Error('Can not read LocalFileHeader');
+            }
+            this.version = stream.ReadUint16();
+            this.flags = parseFlag(stream.ReadUint16());
+            this.compression = stream.ReadUint16();
+            this.modTime = stream.ReadUint16();
+            this.modDate = stream.ReadUint16();
+            this.crc32 = stream.ReadUint32();
+            this.compressedSize = stream.ReadUint32();
+            this.uncompressedSize = stream.ReadUint32();
+            this.filenameLen = stream.ReadUint16();
+            this.extraFieldLen = stream.ReadUint16();
+            this.filename = stream.ReadString(this.filenameLen);
+            this.extraField = stream.ReadBuffer(this.extraFieldLen);
+            this.data = stream.ReadBuffer(this.compressedSize);
+        } else {
+            const date = new Date();
+            this.signature = this.SIGNATURE;
+            this.version = 0x14;
+            this.flags = parseFlag(0);
+            this.compression = COMP_TYPE.DEFLATED;
+            this.modTime = DateToTime(date);
+            this.modDate = DateToDay(date);
+            this.crc32 = 0;
+            this.compressedSize = 0;
+            this.uncompressedSize = 0;
+            this.filenameLen = 0;
+            this.extraFieldLen = 0;
+            this.filename = '';
+            this.extraField = Buffer.from('');
+            this.data = Buffer.from('');
         }
-        this.version = stream.ReadUint16();
-        this.flags = parseFlag(stream.ReadUint16());
-        this.compression = stream.ReadUint16();
-        this.modTime = stream.ReadUint16();
-        this.modDate = stream.ReadUint16();
-        this.crc32 = stream.ReadUint32();
-        this.compressedSize = stream.ReadUint32();
-        this.uncompressedSize = stream.ReadUint32();
-        this.filenameLen = stream.ReadUint16();
-        this.extraFieldLen = stream.ReadUint16();
-        this.filename = stream.ReadString(this.filenameLen);
-        this.extraField = stream.ReadBuffer(this.extraFieldLen);
-        this.data = stream.ReadBuffer(this.compressedSize);
+    }
+
+    get Date() {
+        let date = TimeToDate(this.modTime);
+        date = DayToDate(this.modDate, date);
+        return date;
+    }
+
+    set Date(date: Date) {
+        this.modTime = DateToTime(date);
+        this.modDate = DateToTime(date);
+    }
+
+    set Filename(name: string) {
+        this.filenameLen = name.length;
+        this.filename = name;
     }
 
 }
 
 export class CentralDirectory {
+
+    private readonly SIGNATURE: UINT32 = 0x02014B50;
 
     public signature: UINT32;
     public version: UINT16;
@@ -164,35 +247,77 @@ export class CentralDirectory {
     public extraField: Buffer;
     public comment: string;
 
-    constructor(stream: FileManager) {
-        this.signature = stream.ReadUint32();
-        if ( this.signature !== 0x02014B50 ) {
-            throw Error('Can not read Central Directory');
+    constructor(stream?: FileManager) {
+        if ( stream ) {
+            this.signature = stream.ReadUint32();
+            if ( this.signature !== this.SIGNATURE ) {
+                throw Error('Can not read Central Directory');
+            }
+            this.version = stream.ReadUint16();
+            this.extVer = stream.ReadUint16();
+            this.flag = parseFlag(stream.ReadUint16());
+            this.compression = stream.ReadUint16();
+            this.modTime = stream.ReadUint16();
+            this.modDate = stream.ReadUint16();
+            this.crc32 = stream.ReadUint32();
+            this.compressedSize = stream.ReadUint32();
+            this.uncompressedSize = stream.ReadUint32();
+            this.filenameLen = stream.ReadUint16();
+            this.extraFieldLen = stream.ReadUint16();
+            this.commentLen = stream.ReadUint16();
+            this.diskNumStart = stream.ReadUint16();
+            this.inAttr = stream.ReadUint16();
+            this.exAttr = stream.ReadUint32();
+            this.headerOffset = stream.ReadUint32();
+            this.filename = stream.ReadString(this.filenameLen);
+            this.extraField = stream.ReadBuffer(this.extraFieldLen);
+            this.comment = stream.ReadString(this.commentLen);
+        } else {
+            const date = new Date();
+            this.signature = this.SIGNATURE;
+            this.version = 0x14;
+            this.extVer = 0x10;
+            this.flag = parseFlag(0);
+            this.compression = COMP_TYPE.DEFLATED;
+            this.modTime = DateToTime(date);
+            this.modDate = DateToTime(date);
+            this.crc32 = 0;
+            this.compressedSize = 0;
+            this.uncompressedSize = 0;
+            this.filenameLen = 0;
+            this.extraFieldLen = 0;
+            this.commentLen = 0;
+            this.diskNumStart = 0;
+            this.inAttr = 0;
+            this.exAttr = 0;
+            this.headerOffset = 0;
+            this.filename = '';
+            this.extraField = Buffer.from('');
+            this.comment = '';
         }
-        this.version = stream.ReadUint16();
-        this.extVer = stream.ReadUint16();
-        this.flag = parseFlag(stream.ReadUint16());
-        this.compression = stream.ReadUint16();
-        this.modTime = stream.ReadUint16();
-        this.modDate = stream.ReadUint16();
-        this.crc32 = stream.ReadUint32();
-        this.compressedSize = stream.ReadUint32();
-        this.uncompressedSize = stream.ReadUint32();
-        this.filenameLen = stream.ReadUint16();
-        this.extraFieldLen = stream.ReadUint16();
-        this.commentLen = stream.ReadUint16();
-        this.diskNumStart = stream.ReadUint16();
-        this.inAttr = stream.ReadUint16();
-        this.exAttr = stream.ReadUint32();
-        this.headerOffset = stream.ReadUint32();
-        this.filename = stream.ReadString(this.filenameLen);
-        this.extraField = stream.ReadBuffer(this.extraFieldLen);
-        this.comment = stream.ReadString(this.commentLen);
+    }
+
+    get Date() {
+        let date = TimeToDate(this.modTime);
+        date = DayToDate(this.modDate, date);
+        return date;
+    }
+
+    set Date(date: Date) {
+        this.modTime = DateToTime(date);
+        this.modDate = DateToTime(date);
+    }
+
+    set Filename(name: string) {
+        this.filenameLen = name.length;
+        this.filename = name;
     }
 
 }
 
 export class EndOfCentralDirectory {
+
+    private readonly SIGNATURE: UINT32 = 0x06054B50;
 
     public signature: UINT32;
     public diskNum: UINT16;
@@ -214,19 +339,31 @@ export class EndOfCentralDirectory {
         return ret;
     }
 
-    constructor(stream: FileManager) {
-        this.signature = stream.ReadUint32();
-        if ( this.signature !== 0x06054B50 ) {
-            throw Error('Can not read End of Central Directory');
+    constructor(stream?: FileManager) {
+        if ( stream ) {
+            this.signature = stream.ReadUint32();
+            if ( this.signature !== this.SIGNATURE ) {
+                throw Error('Can not read End of Central Directory');
+            }
+            this.diskNum = stream.ReadUint16();
+            this.diskStart = stream.ReadUint16();
+            this.recordNum = stream.ReadUint16();
+            this.totalNum = stream.ReadUint16();
+            this.recordSize = stream.ReadUint32();
+            this.recordStart = stream.ReadUint32();
+            this.commentLen = stream.ReadUint16();
+            this.comment = stream.ReadString(this.commentLen);
+        } else {
+            this.signature = this.SIGNATURE;
+            this.diskNum = 0;
+            this.diskStart = 0;
+            this.recordNum = 0;
+            this.totalNum = 0;
+            this.recordSize = 0;
+            this.recordStart = 0;
+            this.commentLen = 0;
+            this.comment = '';
         }
-        this.diskNum = stream.ReadUint16();
-        this.diskStart = stream.ReadUint16();
-        this.recordNum = stream.ReadUint16();
-        this.totalNum = stream.ReadUint16();
-        this.recordSize = stream.ReadUint32();
-        this.recordStart = stream.ReadUint32();
-        this.commentLen = stream.ReadUint16();
-        this.comment = stream.ReadString(this.commentLen);
     }
 
 }
@@ -235,9 +372,15 @@ export class ZipArchiveEntry {
 
     private central!: CentralDirectory;
     private header!: LocalFileHeader;
+    private stream: FileManager;
 
-    constructor(private archive: ZipArchive, private stream: FileManager) {
-        this.central = new CentralDirectory(stream);
+    constructor(private archive: ZipArchive, stream?: FileManager) {
+        if ( stream ) {
+            this.central = new CentralDirectory(stream);
+            this.stream = stream;
+        } else {
+            this.stream = new FileManager();
+        }
     }
 
     set CentralDirectory(central: CentralDirectory) {
@@ -341,12 +484,16 @@ export class ZipArchiveEntry {
     }
 
     public Read() {
-        this.open();
+        if ( !this.header ) {
+            this.open();
+        }
         return this.Uncompress(this.header.data);
     }
 
     public Write(data: Buffer) {
-        this.open();
+        if ( !this.header ) {
+            this.open();
+        }
         this.header.data = this.Compress(data);
     }
 
@@ -396,7 +543,18 @@ export class ZipArchive {
     }
 
     public CreateEntry(entryName: string) {
-        /* TODO: https://docs.microsoft.com/ko-kr/dotnet/api/system.io.compression.ziparchive.createentry?view=net-5.0 */
+        const entry = new ZipArchiveEntry(this);
+        const central = new CentralDirectory();
+        const header = new LocalFileHeader();
+
+        central.Filename = entryName;
+        header.Filename = entryName;
+
+        entry.CentralDirectory = central;
+        entry.LocalFileHeader = header;
+
+        this.entries.push(entry);
+        return entry;
     }
 
     public Dispose(disposing?: boolean) {

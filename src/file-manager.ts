@@ -12,12 +12,16 @@ export class FileManager {
     private buf!: Buffer;
     private fd: number = 0; 
 
-    constructor(filename: string, options: any = {}) {
-        if ( !fs.existsSync(filename) ) {
-            throw Error(`No such file [${filename}].`);
-        }
+    constructor(filename?: string, options: any = {}) {
+        if ( filename ) {
+            if ( !fs.existsSync(filename) ) {
+                throw Error(`No such file [${filename}].`);
+            }
 
-        this.buf = fs.readFileSync(filename, options);
+            this.buf = fs.readFileSync(filename, options);
+        } else {
+            this.buf = Buffer.from('');
+        }
     }
 
     get Fd() {
