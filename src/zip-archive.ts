@@ -289,11 +289,10 @@ export class ZipArchiveEntry {
         return path.basename(this.central.filename);
     }
 
-    private Uncompress() {
+    private Uncompress(data: Buffer) {
         if ( !this.header ) {
             return Buffer.from('');
         }
-        let data = this.header.data;
         let buf: Buffer = Buffer.from('');
         
         if ( this.header.flags.Encrypted ) {
@@ -313,14 +312,42 @@ export class ZipArchiveEntry {
         return buf;
     }
 
-    public Delete() {
-        /* TODO: https://docs.microsoft.com/ko-kr/dotnet/api/system.io.compression.ziparchiveentry.delete?view=net-5.0 */
+    private Compress(data: Buffer) {
+        this.header.compression = COMP_TYPE.DEFLATED;
+        data = zlib.deflateRawSync(data);
+        
+        if ( this.Archive.Password ) {
+            this.header.flags.Encrypted = true;
+            data = ZIP20.Encrypt(data, this.Archive.Password, this.Crc32);
+        } else {
+            this.header.flags.Encrypted = false;
+        }
+
+        return data;
     }
 
-    public Open() {
+    private open() {
         this.stream.Fd = this.central.headerOffset;
         this.header = new LocalFileHeader(this.stream);
-        return this.Uncompress();
+    }
+
+    public Delete() {
+        const entries = this.Archive.Entries;
+        const idx = entries.findIndex((entry => entry.FullName === this.central.filename));
+        if ( idx === -1 ) {
+            throw Error(`Can not find entry in archive [${this.header.filename}]`);
+        }
+        entries.splice(idx, 1);
+    }
+
+    public Read() {
+        this.open();
+        return this.Uncompress(this.header.data);
+    }
+
+    public Write(data: Buffer) {
+        this.open();
+        this.header.data = this.Compress(data);
     }
 
 }

@@ -1,6 +1,8 @@
 // from https://github.com/artem-karpenko/archiver-zip-encrypted/blob/master/lib/zip20/
 
 import crc32 from './crc32';
+import crypto from 'crypto';
+import { UINT16 } from './data-type';
 
 const _uint8 = n => n & 0xFF;
 const _uint32 = n => n & 0xFFFFFFFF;
@@ -70,8 +72,15 @@ const HEADER_LENGTH = 12;
 
 export default class ZIP20 {
     
-    static Encrypt(buf: Buffer, key: string) {
+    static Encrypt(buf: Buffer, key: string, crc: UINT16) {
+        const chiper = new CryptoChiper(key);
 
+        let header = crypto.randomBytes(HEADER_LENGTH);
+        header.writeUInt16LE(crc>>15, HEADER_LENGTH - 2);
+        header = chiper.encrypt(header);
+
+        let data = chiper.encrypt(buf);
+        return Buffer.concat([header, data]);
     }
 
     static Decrypt(buf: Buffer, key: string) {
