@@ -1,5 +1,6 @@
 import { FileManager } from './file-manager';
 import { UINT32, UINT16, SIZE } from './data-type';
+import ZIP20 from './zip20';
 import path from 'path';
 import zlib from 'zlib';
 
@@ -57,7 +58,8 @@ export enum CD_VER {
 export interface Flag {
     
     Encrypted: boolean,
-    CompressionOption: boolean,
+    CompressionOption1: boolean,
+    CompressionOption2: boolean,
     Descriptor: boolean,
     EnhancedDeflation: boolean,
     PatchedData: boolean,
@@ -67,11 +69,44 @@ export interface Flag {
 
 }
 
+export enum FLAG {
+    ENCRYPTED_FILE          = 0b0000000000000000001,
+    COMPRESSION_OPTION_1    = 0b0000000000000000010,
+    COMPRESSION_OPTION_2    = 0b0000000000000000100,
+    DATA_DESCRIPTOR         = 0b0000000000000001000,
+    ENHANCED_DEFLATION      = 0b0000000000000010000,
+    COMPRESSED_PATCHED_DATA = 0b0000000000000100000,
+    STRONG_ENCRYPTION       = 0b0000000000001000000,
+    UNUSED_1                = 0b0000000000010000000,
+    UNUSED_2                = 0b0000000000100000000,
+    UNUSED_3                = 0b0000000001000000000,
+    UNUSED_4                = 0b0000000010000000000,
+    LANGUAGE_ENCODING       = 0b0000000100000000000,
+    RESERVED_1              = 0b0000001000000000000,
+    MASK_HEADER_VALUES      = 0b0000010000000000000,
+    RESERVED_2              = 0b0000100000000000000,
+    RESERVED_3              = 0b0001000000000000000,
+}
+
+const parseFlag = (flag: UINT16) => {
+    const ret = {} as Flag;
+    ret.Encrypted = !!(flag & FLAG.ENCRYPTED_FILE);
+    ret.CompressionOption1 = !!(flag & FLAG.COMPRESSION_OPTION_1);
+    ret.CompressionOption2 = !!(flag & FLAG.COMPRESSION_OPTION_2);
+    ret.Descriptor = !!(flag & FLAG.DATA_DESCRIPTOR);
+    ret.EnhancedDeflation = !!(flag & FLAG.ENHANCED_DEFLATION);
+    ret.PatchedData = !!(flag & FLAG.COMPRESSED_PATCHED_DATA);
+    ret.StrongEnc = !!(flag & FLAG.STRONG_ENCRYPTION);
+    ret.Encoding = !!(flag & FLAG.LANGUAGE_ENCODING);
+    ret.MaskHeader = !!(flag & FLAG.MASK_HEADER_VALUES);
+    return ret;
+}
+
 export class LocalFileHeader {
 
     public signature: UINT32;
     public version: UINT16;
-    public flags: UINT16; /* TODO: */
+    public flags: Flag;
     public compression: COMP_TYPE;
     public modTime: UINT16;
     public modDate: UINT16;
@@ -90,7 +125,7 @@ export class LocalFileHeader {
             throw Error('Can not read LocalFileHeader');
         }
         this.version = stream.ReadUint16();
-        this.flags = stream.ReadUint16();
+        this.flags = parseFlag(stream.ReadUint16());
         this.compression = stream.ReadUint16();
         this.modTime = stream.ReadUint16();
         this.modDate = stream.ReadUint16();
@@ -111,7 +146,7 @@ export class CentralDirectory {
     public signature: UINT32;
     public version: UINT16;
     public extVer: UINT16;
-    public flag: UINT16;
+    public flag: Flag;
     public compression: COMP_TYPE;
     public modTime: UINT16;
     public modDate: UINT16;
@@ -136,7 +171,7 @@ export class CentralDirectory {
         }
         this.version = stream.ReadUint16();
         this.extVer = stream.ReadUint16();
-        this.flag = stream.ReadUint16();
+        this.flag = parseFlag(stream.ReadUint16());
         this.compression = stream.ReadUint16();
         this.modTime = stream.ReadUint16();
         this.modDate = stream.ReadUint16();
@@ -256,15 +291,21 @@ export class ZipArchiveEntry {
 
     private Uncompress() {
         if ( !this.header ) {
-            return;
+            return Buffer.from('');
         }
-        let buf: Buffer;
+        let data = this.header.data;
+        let buf: Buffer = Buffer.from('');
+        
+        if ( this.header.flags.Encrypted ) {
+            data = ZIP20.Decrypt(data, this.Archive.Password);
+        }
+
         switch ( this.header.compression ) {
             case COMP_TYPE.NO_COMPRESSION:
-                buf = this.header.data;
+                buf = data;
                 break;
             case COMP_TYPE.DEFLATED:
-                buf = zlib.inflateRawSync(this.header.data);
+                buf = zlib.inflateRawSync(data);
                 break;
             default:
                 throw Error(`Unknown compression method. [${this.header.compression}]`);
