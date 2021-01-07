@@ -414,12 +414,14 @@ export class ZipArchiveEntry {
     }
 
     get LastWriteTime() {
-        /* TODO: */
-        return new Date();
+        return this.central.Date;
     }
 
     set LastWriteTime(val: Date) {
-        /* TODO: */
+        this.central.Date = val;
+        if ( this.header ) {
+            this.header.Date = val;
+        }
     }
 
     get Length() {
