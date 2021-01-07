@@ -1,10 +1,11 @@
 import { FileManager } from './file-manager';
 import { UINT32, UINT16, SIZE } from './data-type';
 import path from 'path';
+import zlib from 'zlib';
 
 enum COMP_TYPE {
 
-    NO_COMPRESSION      = 0x00, /* TODO: */
+    NO_COMPRESSION      = 0x00, 
     SHRUNK              = 0x01, /* TODO: */
     FACTOR_1            = 0x02, /* TODO: */
     FACTOR_2            = 0x03, /* TODO: */
@@ -12,7 +13,7 @@ enum COMP_TYPE {
     FACTOR_4            = 0x05, /* TODO: */
     IMPLODED            = 0x06, /* TODO: */
     RESERVED_1          = 0x07, /* TODO: */
-    DEFLATED            = 0x08, /* TODO: */
+    DEFLATED            = 0x08, 
     ENHANCED_DEFLATED   = 0x09, /* TODO: */
     DCL_IMPLODED        = 0x10, /* TODO: */
     RESERVED_2          = 0x11, /* TODO: */
@@ -262,6 +263,9 @@ export class ZipArchiveEntry {
             case COMP_TYPE.NO_COMPRESSION:
                 buf = this.header.data;
                 break;
+            case COMP_TYPE.DEFLATED:
+                buf = zlib.inflateRawSync(this.header.data);
+                break;
             default:
                 throw Error(`Unknown compression method. [${this.header.compression}]`);
         }
@@ -284,6 +288,7 @@ export class ZipArchive {
 
     private eofDir: EndOfCentralDirectory;
     private entries: ZipArchiveEntry[] = [];
+    private password: string = '';
 
     constructor(private stream: FileManager) {
         stream.Fd = stream.Length - SIZE.UINT32;
@@ -305,6 +310,14 @@ export class ZipArchive {
 
     get Entries() {
         return this.entries;
+    }
+
+    get Password() {
+        return this.password;
+    }
+
+    set Password(val: string) {
+        this.password = val;
     }
 
     public GetEntry(entryName: string) {
