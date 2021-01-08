@@ -397,6 +397,16 @@ export class ZipArchiveEntry {
             this.Init();
         }
         this.header.data = this.Compress(data);
+
+        const date = new Date();
+        this.header.Date = date;
+        this.central.Date = date;
+        
+        this.header.uncompressedSize = data.length;
+        this.central.uncompressedSize = data.length;
+
+        this.header.compressedSize = data.length;
+        this.central.compressedSize = data.length;
     }
 
     public ExtractEntry(dir?: string) {
@@ -454,50 +464,12 @@ export class ZipArchive {
         this.filename = val;
     }
 
-    public GetEntry(entryName: string) {
-        const idx = this.entries.findIndex((entry: ZipArchiveEntry) => entry.Name === entryName);
-        if ( idx !== -1 ) {
-            return this.entries[idx];
-        }
+    get Stream() {
+        this.__stream_rewrite();
+        return this.stream.buf;
     }
 
-    public CreateEntry(entryName: string) {
-        const entry = new ZipArchiveEntry(this);
-        const central = new CentralDirectory();
-        const header = new LocalFileHeader();
-
-        central.Filename = entryName;
-        header.Filename = entryName;
-
-        entry.CentralDirectory = central;
-        entry.LocalFileHeader = header;
-
-        this.entries.push(entry);
-        return entry;
-    }
-
-    public ExtractAll(dir?: string) {
-        if ( !dir ) {
-            const regex = new RegExp(`${path.extname(this.filename)}$`);
-            dir = this.filename.replace(regex, '');
-        }
-
-        if ( !fs.existsSync(dir) ) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-
-        this.entries.forEach((entry: ZipArchiveEntry) => {
-            const subdir = path.resolve(dir as string, path.dirname(entry.FullName));
-            
-            if ( !fs.existsSync(subdir) ) {
-                fs.mkdirSync(subdir, { recursive: true });
-            }
-
-            entry.ExtractEntry(subdir);
-        });
-    }
-
-    public Save() {
+    private __stream_rewrite() {
         const stream = new StreamBuffer();
         stream.Fd = 0;
         this.entries.forEach((entry: ZipArchiveEntry) => {
@@ -569,14 +541,69 @@ export class ZipArchive {
         stream.WriteUint16(this.eofDir.commentLen);
         stream.WriteString(this.eofDir.comment);
 
-        fs.writeFileSync(this.filename, this.stream.buf);
+        this.stream = stream;
+    }
+
+    public GetEntry(entryName: string) {
+        const idx = this.entries.findIndex((entry: ZipArchiveEntry) => entry.Name === entryName);
+        if ( idx !== -1 ) {
+            return this.entries[idx];
+        }
+    }
+
+    public CreateEntry(entryName: string) {
+        const entry = new ZipArchiveEntry(this);
+        const central = new CentralDirectory();
+        const header = new LocalFileHeader();
+
+        central.Filename = entryName;
+        header.Filename = entryName;
+
+        central.filenameLen = entryName.length;
+        header.filenameLen = entryName.length;
+
+        if ( this.password ) {
+            central.flags.Encrypted = true;
+            header.flags.Encrypted = true;
+        }
+
+        entry.CentralDirectory = central;
+        entry.LocalFileHeader = header;
+
+        this.entries.push(entry);
+        return entry;
+    }
+
+    public ExtractAll(dir?: string) {
+        if ( !dir ) {
+            const regex = new RegExp(`${path.extname(this.filename)}$`);
+            dir = this.filename.replace(regex, '');
+        }
+
+        if ( !fs.existsSync(dir) ) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+
+        this.entries.forEach((entry: ZipArchiveEntry) => {
+            const subdir = path.resolve(dir as string, path.dirname(entry.FullName));
+            
+            if ( !fs.existsSync(subdir) ) {
+                fs.mkdirSync(subdir, { recursive: true });
+            }
+
+            entry.ExtractEntry(subdir);
+        });
+    }
+
+    public Save() {
+        fs.writeFileSync(this.filename, this.Stream);
     }
 
 }
 
 export class ZipFile {
 
-    static CreateFromDirectory(src: string, dst: string) {
+    static CreateFromDirectory(src: string, dst: string, passwd?: string) {
         /* TODO: https://docs.microsoft.com/ko-kr/dotnet/api/system.io.compression.zipfile.createfromdirectory?view=net-5.0 */
     }
 
