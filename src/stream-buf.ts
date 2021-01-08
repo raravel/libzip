@@ -1,27 +1,11 @@
-/*
- * file-manager.ts
- * Created on Wed Jan 06 2021
- *
- * Copyright (c) raravel. Licensed under the MIT License.
- */
-
 import fs from 'fs';
 import { SIZE } from './data-type';
 
-export class FileManager {
-    private buf!: Buffer;
+export default class StreamBuffer {
     private fd: number = 0; 
 
-    constructor(public filename?: string, options: any = {}) {
-        if ( filename ) {
-            if ( !fs.existsSync(filename) ) {
-                throw Error(`No such file [${filename}].`);
-            }
-
-            this.buf = fs.readFileSync(filename, options);
-        } else {
-            this.buf = Buffer.from('');
-        }
+    constructor(public buf: Buffer = Buffer.from('')) {
+        
     }
 
     get Fd() {
@@ -138,12 +122,6 @@ export class FileManager {
         let ret = this.buf.subarray(fd, this.buf.length);
         this.fd = this.buf.length;
         return ret;
-    }
-
-    public Save(name: string|undefined = this.filename) {
-        if ( name ) {
-            fs.writeFileSync(name as string, this.buf);
-        }
     }
     
 }

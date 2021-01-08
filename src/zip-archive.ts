@@ -1,4 +1,4 @@
-import { FileManager } from './file-manager';
+import StreamBuffer from './stream-buf';
 import { UINT32, UINT16, SIZE } from './data-type';
 import { Flag, FLAG, parseFlag, FlagToInt16, DateToDay, DateToTime, DayToDate, TimeToDate } from './util';
 import ZIP20 from './zip20';
@@ -6,6 +6,7 @@ import ZIP20 from './zip20';
 import path from 'path';
 import zlib from 'zlib';
 import CRC32 from 'crc-32';
+import fs from 'fs';
 
 enum COMP_TYPE {
 
@@ -56,7 +57,7 @@ export class LocalFileHeader {
     public extraField: Buffer;
     public data: Buffer;
     
-    constructor(stream?: FileManager) {
+    constructor(stream?: StreamBuffer) {
         if ( stream ) {
             this.signature = stream.ReadUint32();
             if ( this.signature !== this.SIGNATURE ) {
@@ -137,7 +138,7 @@ export class CentralDirectory {
     public extraField: Buffer;
     public comment: string;
 
-    constructor(stream?: FileManager) {
+    constructor(stream?: StreamBuffer) {
         if ( stream ) {
             this.signature = stream.ReadUint32();
             if ( this.signature !== this.SIGNATURE ) {
@@ -219,7 +220,8 @@ export class EndOfCentralDirectory {
     public commentLen: UINT16;      // The length of the following comment field
     public comment: string;         // Comment
 
-    static isEOCD(stream: FileManager) {
+    static isEOCD(stream: StreamBuffer) {
+        console.log(stream);
         let signature = stream.ReadUint32();
         let ret = false;
         if ( signature === 0x06054B50 ) {
@@ -229,7 +231,7 @@ export class EndOfCentralDirectory {
         return ret;
     }
 
-    constructor(stream?: FileManager) {
+    constructor(stream?: StreamBuffer) {
         if ( stream ) {
             this.signature = stream.ReadUint32();
             if ( this.signature !== this.SIGNATURE ) {
@@ -262,14 +264,14 @@ export class ZipArchiveEntry {
 
     private central!: CentralDirectory;
     private header!: LocalFileHeader;
-    private stream: FileManager;
+    private stream: StreamBuffer;
 
-    constructor(private archive: ZipArchive, stream?: FileManager) {
+    constructor(private archive: ZipArchive, stream?: StreamBuffer) {
         if ( stream ) {
             this.central = new CentralDirectory(stream);
             this.stream = stream;
         } else {
-            this.stream = new FileManager();
+            this.stream = new StreamBuffer();
         }
     }
 
@@ -397,6 +399,15 @@ export class ZipArchiveEntry {
         this.header.data = this.Compress(data);
     }
 
+    public ExtractEntry(dir?: string) {
+        if ( !dir ) {
+            dir = path.dirname(this.archive.Filename);
+        }
+
+        const target = path.resolve(dir, this.Name);
+        fs.writeFileSync(target, this.Read());
+    }
+
 }
 
 export class ZipArchive {
@@ -405,7 +416,7 @@ export class ZipArchive {
     private entries: ZipArchiveEntry[] = [];
     private password: string = '';
 
-    constructor(private stream: FileManager) {
+    constructor(private stream: StreamBuffer, private filename: string) {
         stream.Fd = stream.Length - SIZE.UINT32;
         while ( !EndOfCentralDirectory.isEOCD(stream) ) {
             if ( stream.Fd === 0 ) {
@@ -435,6 +446,14 @@ export class ZipArchive {
         this.password = val;
     }
 
+    get Filename() {
+        return this.filename;
+    }
+
+    set Filename(val: string) {
+        this.filename = val;
+    }
+
     public GetEntry(entryName: string) {
         const idx = this.entries.findIndex((entry: ZipArchiveEntry) => entry.Name === entryName);
         if ( idx !== -1 ) {
@@ -457,10 +476,29 @@ export class ZipArchive {
         return entry;
     }
 
+    public ExtractAll(dir?: string) {
+        if ( !dir ) {
+            const regex = new RegExp(`${path.extname(this.filename)}$`);
+            dir = this.filename.replace(regex, '');
+        }
+
+        if ( !fs.existsSync(dir) ) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+
+        this.entries.forEach((entry: ZipArchiveEntry) => {
+            const subdir = path.resolve(dir as string, path.dirname(entry.FullName));
+            
+            if ( !fs.existsSync(subdir) ) {
+                fs.mkdirSync(subdir, { recursive: true });
+            }
+
+            entry.ExtractEntry(subdir);
+        });
+    }
+
     public Save() {
-        /* TODO: https://docs.microsoft.com/ko-kr/dotnet/api/system.io.compression.ziparchive.dispose?view=net-5.0 */
-        const stream = new FileManager();
-        stream.filename = this.stream.filename;
+        const stream = new StreamBuffer();
         stream.Fd = 0;
         this.entries.forEach((entry: ZipArchiveEntry) => {
             
@@ -531,7 +569,7 @@ export class ZipArchive {
         stream.WriteUint16(this.eofDir.commentLen);
         stream.WriteString(this.eofDir.comment);
 
-        stream.Save();
+        fs.writeFileSync(this.filename, this.stream.buf);
     }
 
 }
@@ -542,13 +580,14 @@ export class ZipFile {
         /* TODO: https://docs.microsoft.com/ko-kr/dotnet/api/system.io.compression.zipfile.createfromdirectory?view=net-5.0 */
     }
 
-    static ExtractToDirectory(src: string, dst: string) {
+    static ExtractToDirectory(src: string, dst: string, passwd?: string) {
         /* TODO: https://docs.microsoft.com/ko-kr/dotnet/api/system.io.compression.zipfile.extracttodirectory?view=net-5.0 */
     }
 
     static Open(filename: string) {
-        const fm = new FileManager(filename);
-        return new ZipArchive(fm);
+        const stream = new StreamBuffer();
+        stream.buf = fs.readFileSync(filename);
+        return new ZipArchive(stream, filename);
     }
 
 }

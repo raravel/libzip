@@ -1,4 +1,3 @@
-import { FileManager } from './file-manager';
 import { ZipArchive, ZipFile } from './zip-archive';
 import path from 'path';
 import fs from 'fs';
@@ -9,4 +8,7 @@ archive.Password = '1234';
 //const tga = archive.Entries[1].Delete();
 console.log(archive.Entries);
 //fs.writeFileSync(archive.Entries[0].Name, tga);
-archive.Save();
+//archive.Save();
+
+archive.Entries[0].ExtractEntry();
+//archive.ExtractAll();
