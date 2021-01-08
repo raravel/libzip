@@ -103,7 +103,8 @@ export class LocalFileHeader {
 
     set Date(date: Date) {
         this.modTime = DateToTime(date);
-        this.modDate = DateToTime(date);
+        this.modDate = DateToDay(date);
+        console.log('date', this.modDate)
     }
 
     set Filename(name: string) {
@@ -196,7 +197,7 @@ export class CentralDirectory {
 
     set Date(date: Date) {
         this.modTime = DateToTime(date);
-        this.modDate = DateToTime(date);
+        this.modDate = DateToDay(date);
     }
 
     set Filename(name: string) {
@@ -396,17 +397,21 @@ export class ZipArchiveEntry {
         if ( !this.header ) {
             this.Init();
         }
+        console.log(this.Name, data.length, data);
+
+        this.header.uncompressedSize = data.length;
+        this.central.uncompressedSize = data.length;
+
         this.header.data = this.Compress(data);
 
         const date = new Date();
         this.header.Date = date;
         this.central.Date = date;
         
-        this.header.uncompressedSize = data.length;
-        this.central.uncompressedSize = data.length;
 
-        this.header.compressedSize = data.length;
-        this.central.compressedSize = data.length;
+        this.header.compressedSize = this.header.data.length;
+        this.central.compressedSize = this.header.data.length;
+        console.log('comp size', this.header.compressedSize)
     }
 
     public ExtractEntry(dir?: string) {
@@ -426,21 +431,26 @@ export class ZipArchive {
     private entries: ZipArchiveEntry[] = [];
     private password: string = '';
 
-    constructor(private stream: StreamBuffer, private filename: string) {
-        stream.Fd = stream.Length - SIZE.UINT32;
-        while ( !EndOfCentralDirectory.isEOCD(stream) ) {
-            if ( stream.Fd === 0 ) {
-                throw Error('Can not read Zip Archive');
+    constructor(private filename: string, private stream?: StreamBuffer) {
+        if ( stream ) {
+            stream.Fd = stream.Length - SIZE.UINT32;
+            while ( !EndOfCentralDirectory.isEOCD(stream) ) {
+                if ( stream.Fd === 0 ) {
+                    throw Error('Can not read Zip Archive');
+                }
+                stream.Fd -= SIZE.UINT8;
             }
-            stream.Fd -= SIZE.UINT8;
-        }
-        this.eofDir = new EndOfCentralDirectory(stream);
-        
-        stream.Fd = this.eofDir.recordStart;
-        for ( let i=0;i < this.eofDir.recordNum;i++ ) {
-            const entry = new ZipArchiveEntry(this, stream);
+            this.eofDir = new EndOfCentralDirectory(stream);
+            
+            stream.Fd = this.eofDir.recordStart;
+            for ( let i=0;i < this.eofDir.recordNum;i++ ) {
+                const entry = new ZipArchiveEntry(this, stream);
 
-            this.entries.push(entry);
+                this.entries.push(entry);
+            }
+        } else {
+            this.stream = new StreamBuffer();
+            this.eofDir = new EndOfCentralDirectory();
         }
     }
 
@@ -466,7 +476,8 @@ export class ZipArchive {
 
     get Stream() {
         this.__stream_rewrite();
-        return this.stream.buf;
+        const stream = this.stream as StreamBuffer;
+        return stream.buf;
     }
 
     private __stream_rewrite() {
@@ -601,10 +612,46 @@ export class ZipArchive {
 
 }
 
+const readDirectory = (dir: string, cb: (...args: any) => any, ori_dir?: string) => {
+    if ( !ori_dir ) {
+        ori_dir = dir;
+        dir = '';
+    }
+
+    const target = path.resolve(ori_dir, dir);
+    const items = fs.readdirSync(target);
+    items.forEach((item: string) => {
+        const t = path.resolve(target, item);
+        const st = path.join(dir, item);
+        const stat = fs.statSync(t);
+        cb(st, stat.isDirectory());
+        if ( stat.isDirectory() ) {
+            readDirectory(st, cb, ori_dir);
+        }
+    });
+};
+
 export class ZipFile {
 
     static CreateFromDirectory(src: string, dst: string, passwd?: string) {
-        /* TODO: https://docs.microsoft.com/ko-kr/dotnet/api/system.io.compression.zipfile.createfromdirectory?view=net-5.0 */
+        const stat = fs.statSync(src);
+        if ( !stat.isDirectory() ) {
+            throw Error(`Is not directory [${src}]`);
+        }
+
+        const archive = new ZipArchive(dst);
+        archive.Password = passwd as string;
+
+        readDirectory(src, (p: string, is_dir: boolean) => {
+            const entry = archive.CreateEntry(p);
+            if ( !is_dir ) {
+                const target = path.resolve(src, p);
+                const data = fs.readFileSync(target); 
+                entry.Write(data);
+            }
+        });
+
+        fs.writeFileSync(dst, archive.Stream);
     }
 
     static ExtractToDirectory(src: string, dst: string, passwd?: string) {
@@ -614,7 +661,7 @@ export class ZipFile {
     static Open(filename: string) {
         const stream = new StreamBuffer();
         stream.buf = fs.readFileSync(filename);
-        return new ZipArchive(stream, filename);
+        return new ZipArchive(filename, stream);
     }
 
 }

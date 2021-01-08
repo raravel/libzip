@@ -87,10 +87,10 @@ export const FlagToInt16 = (flag: Flag) => {
 }
 
 export const DayToDate = (day: UINT16, date: Date = new Date(0)) => {
-    const year  = (day & 0b1111100000000000);
-    const month = (day & 0b0000011111100000);
+    const year  = (day & 0b1111111000000000);
+    const month = (day & 0b0000000111100000);
     const d     = (day & 0b0000000000011111);
-    date.setFullYear(year);
+    date.setFullYear(year + 1980);
     date.setMonth(month - 1);
     date.setDate(d);
     return date;
@@ -108,10 +108,10 @@ export const TimeToDate = (time: UINT16, date: Date = new Date(0)) => {
 
 export const DateToDay = (date: Date) => {
     let ret: number = 0;
-    const year = date.getFullYear();
+    const year = date.getFullYear() - 1980;
     const month = (date.getMonth() + 1);
     const d = date.getDate();
-    ret |= year << 11;
+    ret |= year << 9;
     ret |= month << 5;
     ret |= d;
     return ret;
