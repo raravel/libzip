@@ -18,7 +18,16 @@
 		"only-arrow-functions": false,
 		"one-variable-per-declaration": false,
 		"object-literal-shorthand": [true, {"method": "always"}],
-		"semicolon": true
+        "semicolon": true,
+        "no-bitwise": false,
+        "max-classes-per-file": false,
+        "variable-name": [
+            true,
+            "allow-leading-underscore",
+            "allow-pascal-case",
+            "allow-snake-case",
+            "allow-trailing-underscore"
+        ]
 	},
     "rulesDirectory": []
 }
