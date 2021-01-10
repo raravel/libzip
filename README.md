@@ -2,24 +2,24 @@
 
 Manipulate [`.zip`](https://en.wikipedia.org/wiki/ZIP_(file_format)) file in node js like C# [ZipArchive](https://docs.microsoft.com/en-us/dotnet/api/system.io.compression.ziparchive?view=net-5.0).
 
-[![npm](https://nodei.co/npm/zip-archive.png?global=true)](https://npm.im/zip-archive)
+[![npm](https://nodei.co/npm/libzip.png?global=true)](https://npm.im/libzip)
 
 
 ## Installation
 
 npm
 ```sh
-npm install zip-archive
+npm install libzip
 ```
 
 yarn
 ```sh
-yarn add zip-archive
+yarn add libzip
 ```
 
 ## How to use
 
-Detail documentation: [Wiki](https://github.com/raravel/zip-archive/wiki)
+Detail documentation: [Wiki](https://github.com/raravel/libzip/wiki)
 
 
 ## License
