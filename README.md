@@ -1,4 +1,4 @@
-# ZipArchive
+# libzip
 
 Manipulate [`.zip`](https://en.wikipedia.org/wiki/ZIP_(file_format)) file in node js like C# [ZipArchive](https://docs.microsoft.com/en-us/dotnet/api/system.io.compression.ziparchive?view=net-5.0).
 
