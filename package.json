@@ -1,9 +1,9 @@
 {
-	"name": "zip-archive",
-	"version": "1.0.0",
+	"name": "libzip",
+	"version": "1.0.1",
 	"author": "raravel",
     "license": "MIT",
-    "main": "dist/zip-archive.js",
+    "main": "dist/libzip.js",
 	"scripts": {
 		"dev": "nodemon --watch src --watch package.json --watch tsconfig.js --delay 1 --exec 'npm run lint && ts-node' src/index.ts",
 		"lint": "tslint -p .",
@@ -19,5 +19,5 @@
 	"dependencies": {
 		"crc-32": "^1.2.0"
     },
-    "keywords": ["zip", "compression", "unzip", "extract", "stream", "archive", "password", "deflate", "inflate"]
+    "keywords": ["zip", "compression", "unzip", "extract", "stream", "archive", "password", "deflate", "inflate", "libzip"]
 }
