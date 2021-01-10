@@ -1,5 +1,31 @@
 import { UINT32, UINT16, SIZE } from './data-type';
 
+export enum COMP_TYPE {
+
+    NO_COMPRESSION      = 0x00, 
+    SHRUNK              = 0x01, /* TODO: */
+    FACTOR_1            = 0x02, /* TODO: */
+    FACTOR_2            = 0x03, /* TODO: */
+    FACTOR_3            = 0x04, /* TODO: */
+    FACTOR_4            = 0x05, /* TODO: */
+    IMPLODED            = 0x06, /* TODO: */
+    RESERVED_1          = 0x07, /* TODO: */
+    DEFLATED            = 0x08, 
+    ENHANCED_DEFLATED   = 0x09, /* TODO: */
+    DCL_IMPLODED        = 0x10, /* TODO: */
+    RESERVED_2          = 0x11, /* TODO: */
+    BZIP2               = 0x12, /* TODO: */
+    RESERVED_3          = 0x13, /* TODO: */
+    LZMA                = 0x14, /* TODO: */
+    RESERVED_4          = 0x15, /* TODO: */
+    RESERVED_5          = 0x16, /* TODO: */
+    RESERVED_6          = 0x17, /* TODO: */
+    IBM_TERSE           = 0x18, /* TODO: */
+    IBM_LZ77            = 0x19, /* TODO: */
+    PPMD_1              = 0x98, /* TODO: */
+
+}
+
 export enum CD_VER {
 
     MSDOS           = 0x00,
