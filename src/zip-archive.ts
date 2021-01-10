@@ -79,7 +79,7 @@ export class LocalFileHeader {
         } else {
             const date = new Date();
             this.signature = this.SIGNATURE;
-            this.version = 0x14;
+            this.version = 0x0a;
             this.flags = parseFlag(0);
             this.compression = COMP_TYPE.DEFLATED;
             this.modTime = DateToTime(date);
@@ -167,7 +167,7 @@ export class CentralDirectory {
         } else {
             const date = new Date();
             this.signature = this.SIGNATURE;
-            this.version = 0x14;
+            this.version = 0x0a;
             this.extVer = 0x10;
             this.flags = parseFlag(0);
             this.compression = COMP_TYPE.DEFLATED;
@@ -222,7 +222,6 @@ export class EndOfCentralDirectory {
     public comment: string;         // Comment
 
     static isEOCD(stream: StreamBuffer) {
-        console.log(stream);
         let signature = stream.ReadUint32();
         let ret = false;
         if ( signature === 0x06054B50 ) {
@@ -655,7 +654,26 @@ export class ZipFile {
     }
 
     static ExtractToDirectory(src: string, dst: string, passwd?: string) {
-        /* TODO: https://docs.microsoft.com/ko-kr/dotnet/api/system.io.compression.zipfile.extracttodirectory?view=net-5.0 */
+        if ( fs.existsSync(dst) ) {
+            throw Error(`Already file or directory [${dst}]`);
+        }
+        const archive = ZipFile.Open(src);
+
+        if ( passwd ) {
+            archive.Password = passwd;
+        }
+
+        archive.Entries.forEach((entry: ZipArchiveEntry) => {
+            const buf = entry.Read();
+            const target = path.resolve(dst, entry.FullName);
+            const dir = path.dirname(target);
+
+            if ( !fs.existsSync(dir) ) {
+                fs.mkdirSync(dir);
+            }
+
+            fs.writeFileSync(target, buf);
+        });
     }
 
     static Open(filename: string) {
