@@ -18,6 +18,7 @@ export class ZipArchiveEntry {
 	private central!: CentralDirectory;
 	private header!: LocalFileHeader;
 	private stream: StreamBuffer;
+	private passwd!: string;
 
 	constructor(private archive: ZipArchive, stream?: StreamBuffer) {
 		if ( stream ) {
@@ -87,6 +88,14 @@ export class ZipArchiveEntry {
 		return path.basename(this.central.filename);
 	}
 
+	get Password() {
+		return this.passwd;
+	}
+
+	set Password(val: string) {
+		this.passwd = val;
+	}
+
 	private Uncompress(data: Buffer) {
 		if ( !this.header ) {
 			return Buffer.from('');
@@ -94,7 +103,7 @@ export class ZipArchiveEntry {
 		let buf: Buffer = Buffer.from('');
 
 		if ( this.header.flags.Encrypted ) {
-			data = ZIP20.Decrypt(data, this.Archive.Password);
+			data = ZIP20.Decrypt(data, this.passwd || this.Archive.Password);
 		}
 
 		switch ( this.header.compression ) {
@@ -114,11 +123,16 @@ export class ZipArchiveEntry {
 		this.header.compression = COMP_TYPE.DEFLATED;
 		data = zlib.deflateRawSync(data);
 
-		if ( this.Archive.Password ) {
+		if ( this.passwd ) {
 			this.header.flags.Encrypted = true;
-			data = ZIP20.Encrypt(data, this.Archive.Password, this.Crc32);
+			data = ZIP20.Encrypt(data, this.passwd, this.Crc32);
 		} else {
-			this.header.flags.Encrypted = false;
+			if ( this.Archive.Password ) {
+				this.header.flags.Encrypted = true;
+				data = ZIP20.Encrypt(data, this.Archive.Password, this.Crc32);
+			} else {
+				this.header.flags.Encrypted = false;
+			}
 		}
 
 		return data;
