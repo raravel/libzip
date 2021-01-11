@@ -182,8 +182,11 @@ export class ZipArchive {
 	private entries: ZipArchiveEntry[] = [];
 	private password: string = '';
 
-	constructor(private filename: string, private stream?: StreamBuffer) {
+	constructor(private filename: string, private stream?: (Buffer|StreamBuffer)) {
 		if ( stream ) {
+			if ( stream instanceof Buffer ) {
+				stream = new StreamBuffer(stream);
+			}
 			stream.Fd = stream.Length - SIZE.UINT32;
 			while ( !EndOfCentralDirectory.isEOCD(stream) ) {
 				if ( stream.Fd === 0 ) {
@@ -313,7 +316,7 @@ export class ZipArchive {
 		}
 	}
 
-	public CreateEntry(entryName: string) {
+	public CreateEntry(entryName: string, buf?: Buffer) {
 		const entry = new ZipArchiveEntry(this);
 		const central = new CentralDirectory();
 		const header = new LocalFileHeader();
@@ -331,6 +334,10 @@ export class ZipArchive {
 
 		entry.CentralDirectory = central;
 		entry.LocalFileHeader = header;
+
+		if ( buf ) {
+			entry.Write(buf);
+		}
 
 		this.entries.push(entry);
 		return entry;
