@@ -1,6 +1,6 @@
 {
 	"name": "libzip",
-	"version": "1.0.4",
+	"version": "1.0.7",
 	"author": "raravel",
     "license": "MIT",
     "main": "dist/libzip.js",
